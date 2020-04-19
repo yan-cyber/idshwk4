@@ -1,10 +1,11 @@
 global num_of_responses:int;
 global num_of_404_responses:int;
 global num_of_uniqueURL:int;
+#global urls:table[connection] of string;
 
 event zeek_init()
 {
-    local r1=SumStats::Reducer($stream="scan_detect_code.lookup", $apply=set(SumStats::UNIQUE));
+    local r1=SumStats::Reducer($stream="scan_detect_code.lookup", $apply=set(SumStats::SUM));
     local r2=SumStats::Reducer($stream="scan_detect_404.lookup", $apply=set(SumStats::UNIQUE));
     SumStats::create([$name="scan_detect_url",
                       $epoch=10min,
@@ -13,7 +14,7 @@ event zeek_init()
                       {
                           local s1=result["scan_detect_code.lookup"];
                           local s2=result["scan_detect_404.lookup"];
-                          num_of_responses=s1$num;
+                          num_of_responses=s1$sum;
                           num_of_404_responses=s2$num;
                           num_of_uniqueURL=s2$unique;
                           if ( (num_of_404_responses>2) && (num_of_404_responses>0.2*num_of_responses) && (num_of_uniqueURL>0.5*num_of_404_responses) )
@@ -22,10 +23,16 @@ event zeek_init()
                       
 }
 
+event http_request(c:connection,method:string,original_URL:string,unescaped_URL:string,version:string)
+{
+    #urls[c]=unescaped_URL;
+}
 
 event http_reply(c:connection,version:string,code:count,reason:string)
 {
-    SumStats::observe("scan_detect_code.lookup", [$host=c$id$orig_h], [$str=c$http$uid]);
+    #local  a:string=urls[c];
+    SumStats::observe("scan_detect_code.lookup", [$host=c$id$orig_h], [$num=1]);
     if (code==404)
-        SumStats::observe("scan_detect_404.lookup", [$host=c$id$orig_h], [$str=c$http$uid]);
+        SumStats::observe("scan_detect_404.lookup", [$host=c$id$orig_h], [$str=c$uri]);
+        
 }
